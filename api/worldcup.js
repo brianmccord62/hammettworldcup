@@ -1,34 +1,27 @@
-// Vercel serverless function
-// GET /api/worldcup
-//
-// Pulls FIFA World Cup scoreboard data from ESPN and converts it into:
-// - matches
-// - computed group standings
-// - eliminated team list
-// - placeholder knockout points object
-
-const ESPN_SCOREBOARD =
-  "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?limit=500&dates=20260611-20260719";
+const ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?limit=500&dates=20260611-20260719";
 
 const GROUPS = {
   "Group A": ["Mexico", "South Africa", "Korea", "Czechia"],
-  "Group B": ["Canada", "Qatar", "Switzerland", "TBD"],
+  "Group B": ["Canada", "Qatar", "Switzerland", "Bosnia & Herzegovina"],
   "Group C": ["Brazil", "Morocco", "Scotland", "Haiti"],
-  "Group D": ["United States", "Paraguay", "Australia", "TBD"],
+  "Group D": ["United States", "Paraguay", "Australia", "Türkiye"],
   "Group E": ["Germany", "Côte d'Ivoire", "Ecuador", "Curaçao"],
-  "Group F": ["Netherlands", "Japan", "Tunisia", "TBD"],
+  "Group F": ["Netherlands", "Japan", "Tunisia", "Sweden"],
   "Group G": ["Belgium", "Iran", "Egypt", "New Zealand"],
   "Group H": ["Spain", "Saudi Arabia", "Uruguay", "Cabo Verde"],
-  "Group I": ["France", "Senegal", "Norway", "TBD"],
+  "Group I": ["France", "Senegal", "Norway", "Iraq"],
   "Group J": ["Argentina", "Algeria", "Austria", "Jordan"],
-  "Group K": ["Portugal", "Colombia", "Uzbekistan", "TBD"],
+  "Group K": ["Portugal", "Colombia", "Uzbekistan", "DR Congo"],
   "Group L": ["England", "Croatia", "Panama", "Ghana"]
 };
 
 function normalize(name = "") {
   return String(name)
     .replace(/\bUSA\b/i, "United States")
+    .replace(/\bUnited States of America\b/i, "United States")
     .replace(/\bSouth Korea\b/i, "Korea")
+    .replace(/\bKorea Republic\b/i, "Korea")
+    .replace(/\bCzech Republic\b/i, "Czechia")
     .replace(/\bCape Verde\b/i, "Cabo Verde")
     .replace(/\bCuracao\b/i, "Curaçao")
     .replace(/\bTurkey\b/i, "Türkiye")
@@ -39,34 +32,36 @@ function normalize(name = "") {
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-function getTeamDisplayName(raw) {
-  if (!raw) return "";
-  const name = raw.displayName || raw.shortDisplayName || raw.name || raw.abbreviation || "";
+function cleanName(name = "") {
   const aliases = {
-    "United States": "United States",
     "USA": "United States",
+    "United States of America": "United States",
     "South Korea": "Korea",
     "Korea Republic": "Korea",
     "Czech Republic": "Czechia",
-    "Cape Verde Islands": "Cabo Verde",
     "Cape Verde": "Cabo Verde",
+    "Cape Verde Islands": "Cabo Verde",
     "Curacao": "Curaçao",
-    "Ivory Coast": "Côte d'Ivoire"
+    "Turkey": "Türkiye",
+    "Ivory Coast": "Côte d'Ivoire",
+    "Congo DR": "DR Congo"
   };
   return aliases[name] || name;
 }
 
+function getTeamDisplayName(raw) {
+  if (!raw) return "";
+  return cleanName(raw.displayName || raw.shortDisplayName || raw.name || raw.abbreviation || "");
+}
+
 function isFinalCompetition(comp) {
-  const state = comp?.status?.type?.state;
-  const completed = comp?.status?.type?.completed;
-  return completed === true || state === "post";
+  return comp?.status?.type?.completed === true || comp?.status?.type?.state === "post";
 }
 
 function initStandings() {
   const table = {};
   Object.entries(GROUPS).forEach(([groupName, teams]) => {
     teams.forEach(team => {
-      if (team === "TBD") return;
       table[normalize(team)] = {
         group: groupName,
         team,
@@ -138,22 +133,27 @@ function buildGroups(table) {
       teams: sorted.map((row, idx) => ({
         team: row.team,
         place: idx + 1,
-        advancing: idx < 2, // top 2 auto; best third-place logic can be added later
+        advancing: idx < 2,
+        third: idx === 2,
         record: `${row.won}-${row.drawn}-${row.lost}`,
-        points: row.points,
-        gd: row.gd
+        groupPoints: row.points,
+        gd: row.gd,
+        played: row.played
       }))
     };
   });
 }
 
 function buildEliminated(groups) {
-  // During group stage, only mark 4th-place teams as "currently out" after they have played 3.
-  // After all groups finish, add actual eliminated logic here.
+  // Do NOT fade anyone out early.
+  // Only eliminate 4th-place teams after every team in that group has played 3 matches.
+  // Third-place best-8 advancement can be added after group play is complete.
   const eliminated = [];
   groups.forEach(group => {
+    const groupComplete = group.teams.every(t => t.played >= 3);
+    if (!groupComplete) return;
     group.teams.forEach(team => {
-      if (!team.advancing && team.place === 4) eliminated.push(normalize(team.team));
+      if (team.place === 4) eliminated.push(normalize(team.team));
     });
   });
   return eliminated;
@@ -161,10 +161,10 @@ function buildEliminated(groups) {
 
 export default async function handler(req, res) {
   try {
-    const response = await fetch(ESPN_SCOREBOARD);
-    if (!response.ok) {
-      throw new Error(`ESPN returned ${response.status}`);
-    }
+    const response = await fetch(ESPN_SCOREBOARD, {
+      headers: { "User-Agent": "Mozilla/5.0 HammettWorldCup/1.0" }
+    });
+    if (!response.ok) throw new Error(`ESPN returned ${response.status}`);
 
     const data = await response.json();
     const events = data.events || [];
@@ -174,7 +174,6 @@ export default async function handler(req, res) {
       const competitors = comp?.competitors || [];
       const home = competitors.find(c => c.homeAway === "home");
       const away = competitors.find(c => c.homeAway === "away");
-
       return {
         id: event.id,
         date: event.date,
@@ -188,15 +187,12 @@ export default async function handler(req, res) {
     }).filter(m => m.home && m.away);
 
     const table = initStandings();
-
-    matches
-      .filter(m => m.completed)
-      .forEach(m => applyMatchToStandings(table, m));
+    matches.filter(m => m.completed).forEach(m => applyMatchToStandings(table, m));
 
     const groups = buildGroups(table);
     const eliminated = buildEliminated(groups);
 
-    res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
+    res.setHeader("Cache-Control", "no-store");
     return res.status(200).json({
       updatedAt: new Date().toISOString(),
       source: ESPN_SCOREBOARD,
