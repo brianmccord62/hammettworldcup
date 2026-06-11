@@ -1,3 +1,3 @@
-# Hammett World Cup v2
+# Hammett World Cup team points
 
-Fixes: no premature eliminated teams, all 48 drafted teams in groups, manual refresh button, no-store API refresh.
+Adds team point badges inside each owner card.
