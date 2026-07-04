@@ -377,12 +377,24 @@
     <a href="#leaderboardSection">Leaderboard</a>
     <a href="#draftSection">Draft</a>
     <a href="#knockoutSection">Knockout</a><a href="#standingsSection">Groups</a>
-    <a href="#matchesSection">Matches</a>
+    
     <a href="#rulesSection">Rules</a>
   </nav>
 
   <main>
-    <section id="leaderboardSection"><h2>Leaderboard</h2><div class="muted" style="margin-bottom:12px;">Each team now shows its current point contribution inside the owner card.</div><div id="leaderboard" class="grid leaderboard"></div></section>
+
+    <section id="leaderboardSection"><h2>Leaderboard</h2><div class="muted" style="margin-bottom:12px;">Teams are sorted with active teams first, then alphabetically. Each team shows its current point contribution.</div><div id="leaderboard" class="grid leaderboard"></div></section>
+
+
+
+    <section id="knockoutSection">
+      <h2>Knockout Round Points</h2>
+      <div class="muted" style="margin-bottom:12px;">Shows only knockout-round points earned so far, separate from group placement points.</div>
+      <div id="knockoutSummary" class="grid knockout-summary"></div>
+      <div id="knockoutDetails" class="card" style="margin-top:18px;"></div>
+    </section>
+
+
 
     <section id="draftSection" class="grid two-col">
       <div class="card">
@@ -399,20 +411,15 @@
       </div>
     </section>
 
-    <section id="knockoutSection">
-      <h2>Knockout Round Points</h2>
-      <div class="muted" style="margin-bottom:12px;">Shows only knockout-round points earned so far, separate from group placement points.</div>
-      <div id="knockoutSummary" class="grid knockout-summary"></div>
-      <div id="knockoutDetails" class="card" style="margin-top:18px;"></div>
-    </section>
+    
+
+
 
     <section id="standingsSection">
       <h2>Group Standings / Live Point Projection</h2>
       <div class="muted" style="margin-bottom:12px;">Top two and the eight best third-place teams are marked ADV. Group-stage eliminated teams are marked OUT.</div>
       <div class="grid standings" id="standings"></div>
     </section>
-
-    <section id="matchesSection"><h2>Live Match Preview</h2><div class="grid mini-cards" id="matches"></div></section>
   </main>
 
 <script>
@@ -450,8 +457,18 @@ function teamPointBadge(team){
 }
 function isEliminated(team){const key=normalize(team);return !!apiData?.eliminated?.includes(key)}
 function computeOwnerScores(){const scores={};Object.keys(rosters).forEach(o=>scores[o]=0);if(!apiData?.groups)return scores;apiData.groups.forEach(group=>group.teams.forEach(row=>{const meta=allTeams[normalize(row.team)];if(!meta)return;scores[meta.owner]+=projectedGroupPoints(meta.team,row.place,row.advancing)}));if(apiData.knockoutPointsByTeam){Object.entries(apiData.knockoutPointsByTeam).forEach(([teamKey,pts])=>{const meta=allTeams[teamKey];if(meta)scores[meta.owner]+=pts})}return scores}
-function renderLeaderboard(){const scores=computeOwnerScores();const people=Object.entries(rosters).map(([owner,teams])=>({owner,teams,seedTotal:teams.reduce((s,t)=>s+t[1],0),points:scores[owner]||0})).sort((a,b)=>b.points-a.points||a.seedTotal-b.seedTotal||a.owner.localeCompare(b.owner));const el=document.getElementById("leaderboard");el.innerHTML="";people.forEach((p,i)=>{const alive=p.teams.filter(([t])=>!isEliminated(t)).length;const card=document.createElement("div");card.className="card";card.innerHTML=`<div class="rank"><div class="rank-num">${i+1}</div><div class="points">${p.points}</div></div><div class="owner">${p.owner}</div><div class="muted">Seed total: ${p.seedTotal} • Teams alive: ${alive}</div><div class="team-list">${p.teams.map(([team,seed])=>`<div class="team ${isEliminated(team)?"eliminated":""}">${teamLabel(team)}<span class="team-meta">${teamPointBadge(team)}<span class="seed">Pot ${seed}</span></span></div>`).join("")}</div>`;el.appendChild(card)})}
-function renderDraftTable(){const people=Object.entries(rosters).map(([owner,teams])=>({owner,teams,seedTotal:teams.reduce((s,t)=>s+t[1],0)})).sort((a,b)=>a.seedTotal-b.seedTotal||a.owner.localeCompare(b.owner));const tbody=document.querySelector("#draftTable tbody");tbody.innerHTML="";people.forEach(p=>{const tr=document.createElement("tr");tr.innerHTML=`<td><b>${p.owner}</b></td><td>${p.teams.map(([team,seed])=>`<span class="${isEliminated(team)?"eliminated":""}" style="display:inline-flex;align-items:center;gap:6px;margin:2px 0;">${flagImg(team)} ${team} <span class="seed">Pot ${seed}</span></span>`).join(" &nbsp; ")}</td><td>${p.seedTotal}</td>`;tbody.appendChild(tr)})}
+
+function sortOwnerTeams(teams){
+  return [...teams].sort(([teamA],[teamB])=>{
+    const aOut=isEliminated(teamA)?1:0;
+    const bOut=isEliminated(teamB)?1:0;
+    if(aOut!==bOut)return aOut-bOut;
+    return teamA.localeCompare(teamB);
+  });
+}
+
+function renderLeaderboard(){const scores=computeOwnerScores();const people=Object.entries(rosters).map(([owner,teams])=>({owner,teams,seedTotal:teams.reduce((s,t)=>s+t[1],0),points:scores[owner]||0})).sort((a,b)=>b.points-a.points||a.seedTotal-b.seedTotal||a.owner.localeCompare(b.owner));const el=document.getElementById("leaderboard");el.innerHTML="";people.forEach((p,i)=>{const alive=p.teams.filter(([t])=>!isEliminated(t)).length;const card=document.createElement("div");card.className="card";card.innerHTML=`<div class="rank"><div class="rank-num">${i+1}</div><div class="points">${p.points}</div></div><div class="owner">${p.owner}</div><div class="muted">Seed total: ${p.seedTotal} • Teams alive: ${alive}</div><div class="team-list">${sortOwnerTeams(p.teams).map(([team,seed])=>`<div class="team ${isEliminated(team)?"eliminated":""}">${teamLabel(team)}<span class="team-meta">${teamPointBadge(team)}<span class="seed">Pot ${seed}</span></span></div>`).join("")}</div>`;el.appendChild(card)})}
+function renderDraftTable(){const people=Object.entries(rosters).map(([owner,teams])=>({owner,teams,seedTotal:teams.reduce((s,t)=>s+t[1],0)})).sort((a,b)=>a.seedTotal-b.seedTotal||a.owner.localeCompare(b.owner));const tbody=document.querySelector("#draftTable tbody");tbody.innerHTML="";people.forEach(p=>{const tr=document.createElement("tr");tr.innerHTML=`<td><b>${p.owner}</b></td><td>${sortOwnerTeams(p.teams).map(([team,seed])=>`<span class="${isEliminated(team)?"eliminated":""}" style="display:inline-flex;align-items:center;gap:6px;margin:2px 0;">${flagImg(team)} ${team} <span class="seed">Pot ${seed}</span></span>`).join(" &nbsp; ")}</td><td>${p.seedTotal}</td>`;tbody.appendChild(tr)})}
 
 function renderKnockoutPoints(){
   const summaryEl=document.getElementById("knockoutSummary");
@@ -504,8 +521,8 @@ function renderKnockoutPoints(){
 }
 
 function renderStandings(){const el=document.getElementById("standings");el.innerHTML="";const groups=apiData?.groups?.length?apiData.groups:[];if(!groups.length){el.innerHTML=`<div class="card"><h2>No standings yet</h2><div class="muted">Click Refresh ESPN Data after deployment. If ESPN has not populated standings yet, this section will stay blank.</div></div>`;return}groups.forEach(group=>{const card=document.createElement("div");card.className="card";card.innerHTML=`<h2>${group.name}</h2><table class="group-table"><thead><tr><th>Place</th><th>Team</th><th>Owner</th><th>Pts</th></tr></thead><tbody>${group.teams.map(row=>{const meta=allTeams[normalize(row.team)];if(!meta)return"";const points=projectedGroupPoints(meta.team,row.place,row.advancing);const badge=row.advancing?'<span class="adv">ADV</span>':row.third?'<span class="third">3RD</span>':'<span class="out">OUT</span>';return `<tr class="${isEliminated(meta.team)?"eliminated":""}"><td>${row.place}</td><td>${flagImg(meta.team)} ${meta.team} <span class="seed">Pot ${meta.pot}</span> ${badge}</td><td>${meta.owner}</td><td>${fmtPts(points)}</td></tr>`}).join("")}</tbody></table><div class="muted" style="margin-top:10px;">Record/order comes from ESPN completed matches when available.</div>`;el.appendChild(card)})}
-function renderMatches(){const el=document.getElementById("matches");const matches=apiData?.matches?.length?apiData.matches.slice(0,9):[{home:"United States",away:"Ghana",homeScore:0,awayScore:0,status:"Preview"},{home:"Brazil",away:"Croatia",homeScore:0,awayScore:0,status:"Preview"},{home:"Spain",away:"Korea",homeScore:0,awayScore:0,status:"Preview"}];el.innerHTML="";matches.forEach(m=>{const h=allTeams[normalize(m.home)],a=allTeams[normalize(m.away)];const card=document.createElement("div");card.className="match";card.innerHTML=`<div class="match-title">${flagImg(m.home)} ${m.home} vs ${flagImg(m.away)} ${m.away}</div><div class="muted">${h?h.owner+" owns "+h.team:"Not drafted"} • ${a?a.owner+" owns "+a.team:"Not drafted"}</div><div class="score">${m.homeScore??"-"} - ${m.awayScore??"-"}</div><div class="muted">${m.status||"Scheduled"}</div>`;el.appendChild(card)})}
-function renderAll(){renderLeaderboard();renderDraftTable();renderKnockoutPoints();renderStandings();renderMatches()}
+function renderMatches(){const el=document.getElementById("matches");if(!el)return;const matches=apiData?.matches?.length?apiData.matches.slice(0,9):[{home:"United States",away:"Ghana",homeScore:0,awayScore:0,status:"Preview"},{home:"Brazil",away:"Croatia",homeScore:0,awayScore:0,status:"Preview"},{home:"Spain",away:"Korea",homeScore:0,awayScore:0,status:"Preview"}];el.innerHTML="";matches.forEach(m=>{const h=allTeams[normalize(m.home)],a=allTeams[normalize(m.away)];const card=document.createElement("div");card.className="match";card.innerHTML=`<div class="match-title">${flagImg(m.home)} ${m.home} vs ${flagImg(m.away)} ${m.away}</div><div class="muted">${h?h.owner+" owns "+h.team:"Not drafted"} • ${a?a.owner+" owns "+a.team:"Not drafted"}</div><div class="score">${m.homeScore??"-"} - ${m.awayScore??"-"}</div><div class="muted">${m.status||"Scheduled"}</div>`;el.appendChild(card)})}
+function renderAll(){renderLeaderboard();renderDraftTable();renderKnockoutPoints();renderStandings()}
 async function loadApiData(){const btn=document.getElementById("refreshBtn");btn.disabled=true;btn.textContent="Refreshing...";document.getElementById("apiStatus").textContent="Refreshing ESPN data...";try{const res=await fetch(`/api/worldcup?t=${Date.now()}`);if(!res.ok)throw new Error("API returned "+res.status);apiData=await res.json();if(apiData.error)throw new Error(apiData.error);document.getElementById("apiStatus").textContent=`ESPN data loaded • Updated ${new Date(apiData.updatedAt).toLocaleString()} • ${apiData.matches?.length||0} matches found`}catch(err){console.warn(err);document.getElementById("apiStatus").textContent="Preview mode or ESPN/API not connected yet — deploy on Vercel then refresh";apiData=null}renderAll();btn.disabled=false;btn.textContent="Refresh ESPN Data"}
 document.getElementById("refreshBtn").addEventListener("click",()=>loadApiData());renderAll();loadApiData();setInterval(loadApiData,5*60*1000);
 </script>

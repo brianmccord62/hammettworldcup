@@ -1,8 +1,7 @@
-# Hammett World Cup - Group/Third Place + Knockout Tab
+# Hammett World Cup - Layout + Team Sorting Update
 
-Fixes:
-- Bosnia & Herzegovina marked as a group-stage advancing third-place team.
-- Qatar marked out.
-- Scotland, Uruguay, Iran, and Korea marked out.
-- Adds a Knockout Round Points section above Group Standings.
-- Separates knockout points from group placement points.
+Changes:
+- Moved Knockout Round Points directly below the Leaderboard point totals.
+- Removed the Live Match Preview section.
+- Teams inside each owner card now sort active teams first, then alphabetically.
+- Draft Board team lists use the same active-first alphabetical sorting.
