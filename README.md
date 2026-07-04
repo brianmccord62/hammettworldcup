@@ -1,15 +1,11 @@
-# Hammett World Cup - Knockout Fix
+# Hammett World Cup - Final Scoring Fix
 
-This fixes Round of 32 and knockout scoring.
+This version fixes the scoring issue by using World Cup knockout date ranges:
+- R32: 2026-06-28 through 2026-07-03 = +2
+- R16: 2026-07-04 through 2026-07-07 = +3
+- QF: 2026-07-09 through 2026-07-11 = +4
+- SF: 2026-07-14 through 2026-07-15 = +5
+- Third Place: 2026-07-18 = +5
+- Final: 2026-07-19 = +8
 
-Changes:
-- Group standings only use group-stage matches.
-- Knockout wins now add points:
-  - Round of 32 +2
-  - Round of 16 +3
-  - Quarterfinal +4
-  - Semifinal +5
-  - 3rd place +5
-  - World Cup Final +8
-- Handles penalty shootout winners using ESPN winner flags.
-- Knockout losers fade as eliminated.
+It no longer uses ESPN's text status "Final" to score the World Cup Final.
