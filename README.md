@@ -1,7 +1,8 @@
-# Hammett World Cup - Layout + Team Sorting Update
+# Hammett World Cup - Knockout Details Layout
 
 Changes:
-- Moved Knockout Round Points directly below the Leaderboard point totals.
-- Removed the Live Match Preview section.
-- Teams inside each owner card now sort active teams first, then alphabetically.
-- Draft Board team lists use the same active-first alphabetical sorting.
+- Deleted the Draft Board card.
+- Put Knockout Details in the Draft Board location beside Scoring Rules.
+- Removed the standalone Knockout Round Points section.
+- Kept leaderboard team sorting: active teams first, then alphabetical.
+- Removed Live Match Preview.
