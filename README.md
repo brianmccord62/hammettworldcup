@@ -1,8 +1,5 @@
-# Hammett World Cup - Knockout Details Layout
+# Hammett World Cup - Bosnia Fix
 
-Changes:
-- Deleted the Draft Board card.
-- Put Knockout Details in the Draft Board location beside Scoring Rules.
-- Removed the standalone Knockout Round Points section.
-- Kept leaderboard team sorting: active teams first, then alphabetical.
-- Removed Live Match Preview.
+Final adjustment:
+- Bosnia & Herzegovina is marked eliminated because it lost to the United States in the Round of 32.
+- This is added as a manual knockout elimination override to avoid ESPN name mismatch issues.

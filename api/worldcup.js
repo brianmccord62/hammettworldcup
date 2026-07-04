@@ -78,6 +78,10 @@ const GROUP_RESULTS = {
   ]
 };
 
+const MANUAL_KNOCKOUT_ELIMINATED = [
+  "Bosnia & Herzegovina"
+];
+
 const ALIASES = {
   "USA": "United States",
   "United States of America": "United States",
@@ -233,6 +237,10 @@ function buildEliminated(groups, matches) {
 
     const loser = normalize(winner) === normalize(match.home) ? match.away : match.home;
     if (loser) eliminated.push(normalize(loser));
+  });
+
+  MANUAL_KNOCKOUT_ELIMINATED.forEach(team => {
+    eliminated.push(normalize(team));
   });
 
   return [...new Set(eliminated)];
