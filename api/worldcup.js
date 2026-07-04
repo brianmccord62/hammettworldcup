@@ -16,6 +16,54 @@ const GROUPS = {
   "Group L": ["England", "Croatia", "Panama", "Ghana"]
 };
 
+// Exact ESPN knockout event IDs.
+// This prevents completed games with status "Final" from being mistaken for the World Cup Final.
+const KNOCKOUT_ROUNDS_BY_EVENT_ID = {
+  // Round of 32
+  "53452545": { points: 2, label: "Round of 32" },
+  "53452557": { points: 2, label: "Round of 32" },
+  "53452541": { points: 2, label: "Round of 32" },
+  "53452547": { points: 2, label: "Round of 32" },
+  "53452561": { points: 2, label: "Round of 32" },
+  "53452543": { points: 2, label: "Round of 32" },
+  "53452563": { points: 2, label: "Round of 32" },
+  "53452565": { points: 2, label: "Round of 32" },
+  "53452555": { points: 2, label: "Round of 32" },
+  "53452553": { points: 2, label: "Round of 32" },
+  "53452551": { points: 2, label: "Round of 32" },
+  "53452549": { points: 2, label: "Round of 32" },
+  "53452505": { points: 2, label: "Round of 32" },
+  "53452503": { points: 2, label: "Round of 32" },
+  "53452569": { points: 2, label: "Round of 32" },
+  "53452507": { points: 2, label: "Round of 32" },
+
+  // Round of 16
+  "53452511": { points: 3, label: "Round of 16" },
+  "53452509": { points: 3, label: "Round of 16" },
+  "53452517": { points: 3, label: "Round of 16" },
+  "53452519": { points: 3, label: "Round of 16" },
+  "53452513": { points: 3, label: "Round of 16" },
+  "53452515": { points: 3, label: "Round of 16" },
+  "53452521": { points: 3, label: "Round of 16" },
+  "53452523": { points: 3, label: "Round of 16" },
+
+  // Quarterfinal
+  "53452525": { points: 4, label: "Quarterfinal" },
+  "53452527": { points: 4, label: "Quarterfinal" },
+  "53452529": { points: 4, label: "Quarterfinal" },
+  "53452531": { points: 4, label: "Quarterfinal" },
+
+  // Semifinal
+  "53452533": { points: 5, label: "Semifinal" },
+  "53452535": { points: 5, label: "Semifinal" },
+
+  // 3rd Place
+  "53452539": { points: 5, label: "3rd Place" },
+
+  // Final
+  "53452537": { points: 8, label: "World Cup Final" }
+};
+
 const ALIASES = {
   "USA": "United States",
   "United States of America": "United States",
@@ -28,7 +76,8 @@ const ALIASES = {
   "Turkey": "Türkiye",
   "Ivory Coast": "Côte d'Ivoire",
   "Congo DR": "DR Congo",
-  "Democratic Republic of Congo": "DR Congo"
+  "Democratic Republic of Congo": "DR Congo",
+  "Bosnia and Herzegovina": "Bosnia & Herzegovina"
 };
 
 function cleanName(name = "") {
@@ -47,6 +96,7 @@ function normalize(name = "") {
     .replace(/\bTurkey\b/i, "Türkiye")
     .replace(/\bIvory Coast\b/i, "Côte d'Ivoire")
     .replace(/\bCongo DR\b/i, "DR Congo")
+    .replace(/\bBosnia and Herzegovina\b/i, "Bosnia & Herzegovina")
     .trim()
     .toLowerCase()
     .normalize("NFD")
@@ -62,12 +112,6 @@ function isFinalCompetition(comp) {
   return comp?.status?.type?.completed === true || comp?.status?.type?.state === "post";
 }
 
-function parseDateOnly(dateString) {
-  const d = new Date(dateString);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
-}
-
 function teamGroup(team) {
   const key = normalize(team);
   for (const [groupName, teams] of Object.entries(GROUPS)) {
@@ -76,45 +120,44 @@ function teamGroup(team) {
   return null;
 }
 
+function parseLocalDate(dateString) {
+  const d = new Date(dateString);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(d);
+}
+
 function isGroupStageMatch(match) {
-  const d = parseDateOnly(match.date);
+  const d = parseLocalDate(match.date);
   if (!d || d > "2026-06-27") return false;
+
   const hg = teamGroup(match.home);
   const ag = teamGroup(match.away);
   return hg && ag && hg === ag;
 }
 
 function knockoutRoundInfo(match) {
-  const d = parseDateOnly(match.date);
-  const text = `${match.name || ""} ${match.shortName || ""} ${match.status || ""}`.toLowerCase();
-
-  if (text.includes("third") || text.includes("3rd")) return { points: 5, label: "3rd Place" };
-  if (text.includes("final")) return { points: 8, label: "World Cup Final" };
-  if (text.includes("semi")) return { points: 5, label: "Semifinal" };
-  if (text.includes("quarter")) return { points: 4, label: "Quarterfinal" };
-  if (text.includes("round of 16") || text.includes("r16")) return { points: 3, label: "Round of 16" };
-  if (text.includes("round of 32") || text.includes("r32")) return { points: 2, label: "Round of 32" };
-
-  if (!d) return null;
-  if (d >= "2026-06-28" && d <= "2026-07-03") return { points: 2, label: "Round of 32" };
-  if (d >= "2026-07-04" && d <= "2026-07-07") return { points: 3, label: "Round of 16" };
-  if (d >= "2026-07-09" && d <= "2026-07-11") return { points: 4, label: "Quarterfinal" };
-  if (d >= "2026-07-14" && d <= "2026-07-15") return { points: 5, label: "Semifinal" };
-  if (d === "2026-07-18") return { points: 5, label: "3rd Place" };
-  if (d === "2026-07-19") return { points: 8, label: "World Cup Final" };
-  return null;
+  return KNOCKOUT_ROUNDS_BY_EVENT_ID[String(match.id)] || null;
 }
 
 function getWinner(match) {
   if (!match.completed) return null;
+
+  // Penalty/advancement winner from ESPN is most reliable.
+  if (match.homeWinner) return match.home;
+  if (match.awayWinner) return match.away;
+
   const hs = Number(match.homeScore);
   const as = Number(match.awayScore);
   if (Number.isFinite(hs) && Number.isFinite(as)) {
     if (hs > as) return match.home;
     if (as > hs) return match.away;
   }
-  if (match.homeWinner) return match.home;
-  if (match.awayWinner) return match.away;
+
   return null;
 }
 
@@ -161,11 +204,18 @@ function applyMatchToStandings(table, match) {
   away.ga += homeGoals;
 
   if (homeGoals > awayGoals) {
-    home.won += 1; home.points += 3; away.lost += 1;
+    home.won += 1;
+    home.points += 3;
+    away.lost += 1;
   } else if (awayGoals > homeGoals) {
-    away.won += 1; away.points += 3; home.lost += 1;
+    away.won += 1;
+    away.points += 3;
+    home.lost += 1;
   } else {
-    home.drawn += 1; away.drawn += 1; home.points += 1; away.points += 1;
+    home.drawn += 1;
+    away.drawn += 1;
+    home.points += 1;
+    away.points += 1;
   }
 
   home.gd = home.gf - home.ga;
@@ -209,6 +259,7 @@ function buildKnockoutPoints(matches) {
 
   matches.forEach(match => {
     if (!match.completed) return;
+
     const round = knockoutRoundInfo(match);
     if (!round) return;
 
@@ -224,6 +275,7 @@ function buildKnockoutPoints(matches) {
       points: round.points,
       round: round.label,
       match: `${match.home} vs ${match.away}`,
+      eventId: match.id,
       date: match.date
     });
   });
