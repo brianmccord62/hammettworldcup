@@ -95,7 +95,6 @@ function knockoutRoundInfo(match) {
   if (text.includes("round of 16") || text.includes("r16")) return { points: 3, label: "Round of 16" };
   if (text.includes("round of 32") || text.includes("r32")) return { points: 2, label: "Round of 32" };
 
-  // 2026 date fallback
   if (!d) return null;
   if (d >= "2026-06-28" && d <= "2026-07-03") return { points: 2, label: "Round of 32" };
   if (d >= "2026-07-04" && d <= "2026-07-07") return { points: 3, label: "Round of 16" };
@@ -114,7 +113,6 @@ function getWinner(match) {
     if (hs > as) return match.home;
     if (as > hs) return match.away;
   }
-  // Handles penalty shootouts/advancement when the final score is tied.
   if (match.homeWinner) return match.home;
   if (match.awayWinner) return match.away;
   return null;
@@ -211,7 +209,6 @@ function buildKnockoutPoints(matches) {
 
   matches.forEach(match => {
     if (!match.completed) return;
-
     const round = knockoutRoundInfo(match);
     if (!round) return;
 
