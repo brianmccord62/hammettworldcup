@@ -1,19 +1,81 @@
 const ESPN_SCOREBOARD =
   "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?limit=500&dates=20260611-20260719";
 
-const GROUPS = {
-  "Group A": ["Mexico", "South Africa", "Korea", "Czechia"],
-  "Group B": ["Canada", "Qatar", "Switzerland", "Bosnia & Herzegovina"],
-  "Group C": ["Brazil", "Morocco", "Scotland", "Haiti"],
-  "Group D": ["United States", "Paraguay", "Australia", "Türkiye"],
-  "Group E": ["Germany", "Côte d'Ivoire", "Ecuador", "Curaçao"],
-  "Group F": ["Netherlands", "Japan", "Tunisia", "Sweden"],
-  "Group G": ["Belgium", "Iran", "Egypt", "New Zealand"],
-  "Group H": ["Spain", "Saudi Arabia", "Uruguay", "Cabo Verde"],
-  "Group I": ["France", "Senegal", "Norway", "Iraq"],
-  "Group J": ["Argentina", "Algeria", "Austria", "Jordan"],
-  "Group K": ["Portugal", "Colombia", "Uzbekistan", "DR Congo"],
-  "Group L": ["England", "Croatia", "Panama", "Ghana"]
+// Final group-stage table/order based on the completed group stage.
+// This avoids ESPN table parsing issues and correctly handles best third-place teams.
+const GROUP_RESULTS = {
+  "Group A": [
+    { team: "Mexico", place: 1, advancing: true },
+    { team: "South Africa", place: 2, advancing: true },
+    { team: "Korea", place: 3, advancing: false },
+    { team: "Czechia", place: 4, advancing: false }
+  ],
+  "Group B": [
+    { team: "Switzerland", place: 1, advancing: true },
+    { team: "Canada", place: 2, advancing: true },
+    { team: "Bosnia & Herzegovina", place: 3, advancing: true, third: true },
+    { team: "Qatar", place: 4, advancing: false }
+  ],
+  "Group C": [
+    { team: "Brazil", place: 1, advancing: true },
+    { team: "Morocco", place: 2, advancing: true },
+    { team: "Scotland", place: 3, advancing: false },
+    { team: "Haiti", place: 4, advancing: false }
+  ],
+  "Group D": [
+    { team: "United States", place: 1, advancing: true },
+    { team: "Australia", place: 2, advancing: true },
+    { team: "Paraguay", place: 3, advancing: true, third: true },
+    { team: "Türkiye", place: 4, advancing: false }
+  ],
+  "Group E": [
+    { team: "Germany", place: 1, advancing: true },
+    { team: "Côte d'Ivoire", place: 2, advancing: true },
+    { team: "Ecuador", place: 3, advancing: true, third: true },
+    { team: "Curaçao", place: 4, advancing: false }
+  ],
+  "Group F": [
+    { team: "Netherlands", place: 1, advancing: true },
+    { team: "Japan", place: 2, advancing: true },
+    { team: "Sweden", place: 3, advancing: true, third: true },
+    { team: "Tunisia", place: 4, advancing: false }
+  ],
+  "Group G": [
+    { team: "Belgium", place: 1, advancing: true },
+    { team: "Egypt", place: 2, advancing: true },
+    { team: "Iran", place: 3, advancing: false },
+    { team: "New Zealand", place: 4, advancing: false }
+  ],
+  "Group H": [
+    { team: "Spain", place: 1, advancing: true },
+    { team: "Cabo Verde", place: 2, advancing: true },
+    { team: "Uruguay", place: 3, advancing: false },
+    { team: "Saudi Arabia", place: 4, advancing: false }
+  ],
+  "Group I": [
+    { team: "France", place: 1, advancing: true },
+    { team: "Norway", place: 2, advancing: true },
+    { team: "Senegal", place: 3, advancing: true, third: true },
+    { team: "Iraq", place: 4, advancing: false }
+  ],
+  "Group J": [
+    { team: "Argentina", place: 1, advancing: true },
+    { team: "Austria", place: 2, advancing: true },
+    { team: "Algeria", place: 3, advancing: true, third: true },
+    { team: "Jordan", place: 4, advancing: false }
+  ],
+  "Group K": [
+    { team: "Colombia", place: 1, advancing: true },
+    { team: "Portugal", place: 2, advancing: true },
+    { team: "DR Congo", place: 3, advancing: true, third: true },
+    { team: "Uzbekistan", place: 4, advancing: false }
+  ],
+  "Group L": [
+    { team: "England", place: 1, advancing: true },
+    { team: "Croatia", place: 2, advancing: true },
+    { team: "Ghana", place: 3, advancing: true, third: true },
+    { team: "Panama", place: 4, advancing: false }
+  ]
 };
 
 const ALIASES = {
@@ -75,27 +137,6 @@ function localDate(dateString) {
   }).format(d);
 }
 
-function teamGroup(team) {
-  const key = normalize(team);
-  for (const [groupName, teams] of Object.entries(GROUPS)) {
-    if (teams.some(t => normalize(t) === key)) return groupName;
-  }
-  return null;
-}
-
-function isGroupStageMatch(match) {
-  const d = localDate(match.date);
-  if (!d || d > "2026-06-27") return false;
-
-  const hg = teamGroup(match.home);
-  const ag = teamGroup(match.away);
-  return hg && ag && hg === ag;
-}
-
-// IMPORTANT:
-// Do not use ESPN status text like "Final" to determine the round.
-// "Final" just means the game is over.
-// We use the World Cup knockout calendar instead.
 function knockoutRoundInfo(match) {
   const d = localDate(match.date);
   if (!d) return null;
@@ -113,7 +154,6 @@ function knockoutRoundInfo(match) {
 function getWinner(match) {
   if (!match.completed) return null;
 
-  // ESPN winner flag handles penalty shootout advancement.
   if (match.homeWinner) return match.home;
   if (match.awayWinner) return match.away;
 
@@ -128,96 +168,17 @@ function getWinner(match) {
   return null;
 }
 
-function initStandings() {
-  const table = {};
-  Object.entries(GROUPS).forEach(([groupName, teams]) => {
-    teams.forEach(team => {
-      table[normalize(team)] = {
-        group: groupName,
-        team,
-        played: 0,
-        won: 0,
-        drawn: 0,
-        lost: 0,
-        gf: 0,
-        ga: 0,
-        gd: 0,
-        points: 0
-      };
-    });
-  });
-  return table;
-}
-
-function applyMatchToStandings(table, match) {
-  if (!isGroupStageMatch(match)) return;
-
-  const homeKey = normalize(match.home);
-  const awayKey = normalize(match.away);
-  if (!table[homeKey] || !table[awayKey]) return;
-
-  const homeGoals = Number(match.homeScore);
-  const awayGoals = Number(match.awayScore);
-  if (!Number.isFinite(homeGoals) || !Number.isFinite(awayGoals)) return;
-
-  const home = table[homeKey];
-  const away = table[awayKey];
-
-  home.played += 1;
-  away.played += 1;
-  home.gf += homeGoals;
-  home.ga += awayGoals;
-  away.gf += awayGoals;
-  away.ga += homeGoals;
-
-  if (homeGoals > awayGoals) {
-    home.won += 1;
-    home.points += 3;
-    away.lost += 1;
-  } else if (awayGoals > homeGoals) {
-    away.won += 1;
-    away.points += 3;
-    home.lost += 1;
-  } else {
-    home.drawn += 1;
-    away.drawn += 1;
-    home.points += 1;
-    away.points += 1;
-  }
-
-  home.gd = home.gf - home.ga;
-  away.gd = away.gf - away.ga;
-}
-
-function buildGroups(table) {
-  const byGroup = {};
-  Object.values(table).forEach(row => {
-    if (!byGroup[row.group]) byGroup[row.group] = [];
-    byGroup[row.group].push(row);
-  });
-
-  return Object.entries(byGroup).map(([name, rows]) => {
-    const sorted = rows.sort((a, b) =>
-      b.points - a.points ||
-      b.gd - a.gd ||
-      b.gf - a.gf ||
-      a.team.localeCompare(b.team)
-    );
-
-    return {
-      name,
-      teams: sorted.map((row, idx) => ({
-        team: row.team,
-        place: idx + 1,
-        advancing: idx < 2,
-        third: idx === 2,
-        record: `${row.won}-${row.drawn}-${row.lost}`,
-        groupPoints: row.points,
-        gd: row.gd,
-        played: row.played
-      }))
-    };
-  });
+function buildGroups() {
+  return Object.entries(GROUP_RESULTS).map(([name, teams]) => ({
+    name,
+    teams: teams.map(row => ({
+      ...row,
+      record: "",
+      groupPoints: null,
+      gd: null,
+      played: 3
+    }))
+  }));
 }
 
 function buildKnockoutPoints(matches) {
@@ -253,14 +214,14 @@ function buildKnockoutPoints(matches) {
 function buildEliminated(groups, matches) {
   const eliminated = [];
 
+  // Group-stage eliminated teams.
   groups.forEach(group => {
-    const groupComplete = group.teams.every(t => t.played >= 3);
-    if (!groupComplete) return;
     group.teams.forEach(team => {
-      if (team.place === 4) eliminated.push(normalize(team.team));
+      if (!team.advancing) eliminated.push(normalize(team.team));
     });
   });
 
+  // Knockout-stage losing teams.
   matches.forEach(match => {
     if (!match.completed) return;
 
@@ -310,10 +271,7 @@ export default async function handler(req, res) {
       };
     }).filter(m => m.home && m.away);
 
-    const table = initStandings();
-    matches.filter(m => m.completed).forEach(m => applyMatchToStandings(table, m));
-
-    const groups = buildGroups(table);
+    const groups = buildGroups();
     const knockout = buildKnockoutPoints(matches);
     const eliminated = buildEliminated(groups, matches);
 
@@ -328,12 +286,13 @@ export default async function handler(req, res) {
       knockoutDetails: knockout.details
     });
   } catch (error) {
-    return res.status(500).json({
+    const groups = buildGroups();
+    return res.status(200).json({
       updatedAt: new Date().toISOString(),
       error: error.message,
       matches: [],
-      groups: [],
-      eliminated: [],
+      groups,
+      eliminated: buildEliminated(groups, []),
       knockoutPointsByTeam: {},
       knockoutDetails: []
     });
