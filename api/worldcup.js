@@ -1,4 +1,5 @@
-const ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?limit=500&dates=20260611-20260719";
+const ESPN_SCOREBOARD =
+  "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?limit=500&dates=20260611-20260719";
 
 const GROUPS = {
   "Group A": ["Mexico", "South Africa", "Korea", "Czechia"],
@@ -15,8 +16,27 @@ const GROUPS = {
   "Group L": ["England", "Croatia", "Panama", "Ghana"]
 };
 
+const ALIASES = {
+  "USA": "United States",
+  "United States of America": "United States",
+  "South Korea": "Korea",
+  "Korea Republic": "Korea",
+  "Czech Republic": "Czechia",
+  "Cape Verde": "Cabo Verde",
+  "Cape Verde Islands": "Cabo Verde",
+  "Curacao": "Curaçao",
+  "Turkey": "Türkiye",
+  "Ivory Coast": "Côte d'Ivoire",
+  "Congo DR": "DR Congo",
+  "Democratic Republic of Congo": "DR Congo"
+};
+
+function cleanName(name = "") {
+  return ALIASES[name] || name;
+}
+
 function normalize(name = "") {
-  return String(name)
+  return cleanName(String(name))
     .replace(/\bUSA\b/i, "United States")
     .replace(/\bUnited States of America\b/i, "United States")
     .replace(/\bSouth Korea\b/i, "Korea")
@@ -29,24 +49,8 @@ function normalize(name = "") {
     .replace(/\bCongo DR\b/i, "DR Congo")
     .trim()
     .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
-
-function cleanName(name = "") {
-  const aliases = {
-    "USA": "United States",
-    "United States of America": "United States",
-    "South Korea": "Korea",
-    "Korea Republic": "Korea",
-    "Czech Republic": "Czechia",
-    "Cape Verde": "Cabo Verde",
-    "Cape Verde Islands": "Cabo Verde",
-    "Curacao": "Curaçao",
-    "Turkey": "Türkiye",
-    "Ivory Coast": "Côte d'Ivoire",
-    "Congo DR": "DR Congo"
-  };
-  return aliases[name] || name;
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 }
 
 function getTeamDisplayName(raw) {
@@ -58,31 +62,116 @@ function isFinalCompetition(comp) {
   return comp?.status?.type?.completed === true || comp?.status?.type?.state === "post";
 }
 
+function parseDateOnly(dateString) {
+  const d = new Date(dateString);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+function teamGroup(team) {
+  const key = normalize(team);
+  for (const [groupName, teams] of Object.entries(GROUPS)) {
+    if (teams.some(t => normalize(t) === key)) return groupName;
+  }
+  return null;
+}
+
+function isGroupStageMatch(match) {
+  const d = parseDateOnly(match.date);
+  if (!d || d > "2026-06-27") return false;
+  const hg = teamGroup(match.home);
+  const ag = teamGroup(match.away);
+  return hg && ag && hg === ag;
+}
+
+function knockoutRoundInfo(match) {
+  const d = parseDateOnly(match.date);
+  const text = `${match.name || ""} ${match.shortName || ""} ${match.status || ""}`.toLowerCase();
+
+  if (text.includes("third") || text.includes("3rd")) return { points: 5, label: "3rd Place" };
+  if (text.includes("final")) return { points: 8, label: "World Cup Final" };
+  if (text.includes("semi")) return { points: 5, label: "Semifinal" };
+  if (text.includes("quarter")) return { points: 4, label: "Quarterfinal" };
+  if (text.includes("round of 16") || text.includes("r16")) return { points: 3, label: "Round of 16" };
+  if (text.includes("round of 32") || text.includes("r32")) return { points: 2, label: "Round of 32" };
+
+  // 2026 date fallback
+  if (!d) return null;
+  if (d >= "2026-06-28" && d <= "2026-07-03") return { points: 2, label: "Round of 32" };
+  if (d >= "2026-07-04" && d <= "2026-07-07") return { points: 3, label: "Round of 16" };
+  if (d >= "2026-07-09" && d <= "2026-07-11") return { points: 4, label: "Quarterfinal" };
+  if (d >= "2026-07-14" && d <= "2026-07-15") return { points: 5, label: "Semifinal" };
+  if (d === "2026-07-18") return { points: 5, label: "3rd Place" };
+  if (d === "2026-07-19") return { points: 8, label: "World Cup Final" };
+  return null;
+}
+
+function getWinner(match) {
+  if (!match.completed) return null;
+  const hs = Number(match.homeScore);
+  const as = Number(match.awayScore);
+  if (Number.isFinite(hs) && Number.isFinite(as)) {
+    if (hs > as) return match.home;
+    if (as > hs) return match.away;
+  }
+  // Handles penalty shootouts/advancement when the final score is tied.
+  if (match.homeWinner) return match.home;
+  if (match.awayWinner) return match.away;
+  return null;
+}
+
 function initStandings() {
   const table = {};
   Object.entries(GROUPS).forEach(([groupName, teams]) => {
     teams.forEach(team => {
-      table[normalize(team)] = { group: groupName, team, played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, gd: 0, points: 0 };
+      table[normalize(team)] = {
+        group: groupName,
+        team,
+        played: 0,
+        won: 0,
+        drawn: 0,
+        lost: 0,
+        gf: 0,
+        ga: 0,
+        gd: 0,
+        points: 0
+      };
     });
   });
   return table;
 }
 
 function applyMatchToStandings(table, match) {
+  if (!isGroupStageMatch(match)) return;
+
   const homeKey = normalize(match.home);
   const awayKey = normalize(match.away);
   if (!table[homeKey] || !table[awayKey]) return;
+
   const homeGoals = Number(match.homeScore);
   const awayGoals = Number(match.awayScore);
   if (!Number.isFinite(homeGoals) || !Number.isFinite(awayGoals)) return;
-  const home = table[homeKey], away = table[awayKey];
-  home.played++; away.played++;
-  home.gf += homeGoals; home.ga += awayGoals;
-  away.gf += awayGoals; away.ga += homeGoals;
-  if (homeGoals > awayGoals) { home.won++; home.points += 3; away.lost++; }
-  else if (awayGoals > homeGoals) { away.won++; away.points += 3; home.lost++; }
-  else { home.drawn++; away.drawn++; home.points++; away.points++; }
-  home.gd = home.gf - home.ga; away.gd = away.gf - away.ga;
+
+  const home = table[homeKey];
+  const away = table[awayKey];
+
+  home.played += 1;
+  away.played += 1;
+  home.gf += homeGoals;
+  home.ga += awayGoals;
+  away.gf += awayGoals;
+  away.ga += homeGoals;
+
+  if (homeGoals > awayGoals) {
+    home.won += 1; home.points += 3; away.lost += 1;
+  } else if (awayGoals > homeGoals) {
+    away.won += 1; away.points += 3; home.lost += 1;
+  } else {
+    home.drawn += 1; away.drawn += 1; home.points += 1; away.points += 1;
+  }
+
+  home.gd = home.gf - home.ga;
+  away.gd = away.gf - away.ga;
 }
 
 function buildGroups(table) {
@@ -91,14 +180,63 @@ function buildGroups(table) {
     if (!byGroup[row.group]) byGroup[row.group] = [];
     byGroup[row.group].push(row);
   });
+
   return Object.entries(byGroup).map(([name, rows]) => {
-    const sorted = rows.sort((a, b) => b.points - a.points || b.gd - a.gd || b.gf - a.gf || a.team.localeCompare(b.team));
-    return { name, teams: sorted.map((row, idx) => ({ team: row.team, place: idx + 1, advancing: idx < 2, third: idx === 2, record: `${row.won}-${row.drawn}-${row.lost}`, groupPoints: row.points, gd: row.gd, played: row.played })) };
+    const sorted = rows.sort((a, b) =>
+      b.points - a.points ||
+      b.gd - a.gd ||
+      b.gf - a.gf ||
+      a.team.localeCompare(b.team)
+    );
+
+    return {
+      name,
+      teams: sorted.map((row, idx) => ({
+        team: row.team,
+        place: idx + 1,
+        advancing: idx < 2,
+        third: idx === 2,
+        record: `${row.won}-${row.drawn}-${row.lost}`,
+        groupPoints: row.points,
+        gd: row.gd,
+        played: row.played
+      }))
+    };
   });
 }
 
-function buildEliminated(groups) {
+function buildKnockoutPoints(matches) {
+  const points = {};
+  const details = [];
+
+  matches.forEach(match => {
+    if (!match.completed) return;
+
+    const round = knockoutRoundInfo(match);
+    if (!round) return;
+
+    const winner = getWinner(match);
+    if (!winner) return;
+
+    const key = normalize(winner);
+    points[key] = (points[key] || 0) + round.points;
+
+    details.push({
+      team: winner,
+      teamKey: key,
+      points: round.points,
+      round: round.label,
+      match: `${match.home} vs ${match.away}`,
+      date: match.date
+    });
+  });
+
+  return { points, details };
+}
+
+function buildEliminated(groups, matches) {
   const eliminated = [];
+
   groups.forEach(group => {
     const groupComplete = group.teams.every(t => t.played >= 3);
     if (!groupComplete) return;
@@ -106,40 +244,81 @@ function buildEliminated(groups) {
       if (team.place === 4) eliminated.push(normalize(team.team));
     });
   });
-  return eliminated;
+
+  matches.forEach(match => {
+    if (!match.completed) return;
+    const round = knockoutRoundInfo(match);
+    if (!round) return;
+
+    const winner = getWinner(match);
+    if (!winner) return;
+
+    const loser = normalize(winner) === normalize(match.home) ? match.away : match.home;
+    if (loser) eliminated.push(normalize(loser));
+  });
+
+  return [...new Set(eliminated)];
 }
 
 export default async function handler(req, res) {
   try {
-    const response = await fetch(ESPN_SCOREBOARD, { headers: { "User-Agent": "Mozilla/5.0 HammettWorldCup/1.0" } });
+    const response = await fetch(ESPN_SCOREBOARD, {
+      headers: { "User-Agent": "Mozilla/5.0 HammettWorldCup/1.0" }
+    });
+
     if (!response.ok) throw new Error(`ESPN returned ${response.status}`);
+
     const data = await response.json();
     const events = data.events || [];
+
     const matches = events.map(event => {
       const comp = event.competitions?.[0];
       const competitors = comp?.competitors || [];
       const home = competitors.find(c => c.homeAway === "home");
       const away = competitors.find(c => c.homeAway === "away");
+
       return {
         id: event.id,
+        name: event.name || "",
+        shortName: event.shortName || "",
         date: event.date,
         status: comp?.status?.type?.description || event.status?.type?.description || "Scheduled",
         completed: isFinalCompetition(comp),
         home: getTeamDisplayName(home?.team),
         away: getTeamDisplayName(away?.team),
         homeScore: home?.score ?? null,
-        awayScore: away?.score ?? null
+        awayScore: away?.score ?? null,
+        homeWinner: home?.winner === true,
+        awayWinner: away?.winner === true
       };
     }).filter(m => m.home && m.away);
 
     const table = initStandings();
     matches.filter(m => m.completed).forEach(m => applyMatchToStandings(table, m));
+
     const groups = buildGroups(table);
-    const eliminated = buildEliminated(groups);
+    const knockout = buildKnockoutPoints(matches);
+    const eliminated = buildEliminated(groups, matches);
 
     res.setHeader("Cache-Control", "no-store");
-    return res.status(200).json({ updatedAt: new Date().toISOString(), source: ESPN_SCOREBOARD, matches, groups, eliminated, knockoutPointsByTeam: {} });
+    return res.status(200).json({
+      updatedAt: new Date().toISOString(),
+      source: ESPN_SCOREBOARD,
+      matches,
+      groups,
+      eliminated,
+      knockoutPointsByTeam: knockout.points,
+      knockoutDetails: knockout.details
+    });
   } catch (error) {
-    return res.status(500).json({ updatedAt: new Date().toISOString(), error: error.message, matches: [], groups: [], eliminated: [], knockoutPointsByTeam: {} });
+    return res.status(500).json({
+      updatedAt: new Date().toISOString(),
+      error: error.message,
+      matches: [],
+      groups: [],
+      eliminated: [],
+      knockoutPointsByTeam: {},
+      knockoutDetails: []
+    });
   }
 }
